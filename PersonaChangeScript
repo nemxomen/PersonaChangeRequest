@@ -1,0 +1,294 @@
+//Persona Universal with Delete
+
+// Add your usernames here
+Set<String> usernames = new Set<String>{'Users'};
+
+// Define variables to hold profile ID, permission sets, permission set groups, and public groups
+
+String persona = 'INSERT PERSONA HERE';
+
+Id profileId;
+String profileName ='';
+Set<String> permissionSetGroupNames = new Set<String>();
+Set<String> permissionSetNames = new Set<String>();
+Set<String> publicGroupNames = new Set<String>();
+
+// Assign values based on the persona
+if (persona == 'Sales Ops' || persona == 'SO') {
+    profileName = 'Sales Operations Profile'; 
+    permissionSetGroupNames.add('Sales_Operations_PSG');
+    permissionSetNames.add('DocuSign_User');
+    permissionSetNames.add('Product_Catalog_Management_Viewer');
+    publicGroupNames.add('Docgen Template Library Viewer');
+    publicGroupNames.add('SOPs');
+} else if (persona == 'Account Seller' || persona == 'AS') {
+    profileName = 'Account Seller'; 
+    permissionSetGroupNames.add('Account_Seller_PSG');
+    permissionSetNames.add('DocuSign_User');
+    publicGroupNames.add('Docgen Template Library Viewer');
+} else if (persona == 'Product Lifecycle Management' || persona == 'PLM') {
+    profileName = 'Product Lifecycle Management Profile';
+    permissionSetGroupNames.add('Product_Lifecycle_Management_PSG');
+    permissionSetNames.add('DocuSign_User');
+    publicGroupNames.add('Docgen Template Library Viewer');
+} else if (persona == 'Approval Configuration' || persona == 'AC') {
+    profileName = 'Approval Configuration';
+    permissionSetNames.add('DocuSign_User');
+    publicGroupNames.add('Docgen Template Library Viewer');
+} else if (persona == 'Quoting Rules' || persona == 'QR') {
+    profileName = 'Quoting Rules Profile';
+    permissionSetGroupNames.add('Quoting_Rules_PSG');
+    permissionSetNames.add('DocuSign_User');
+    publicGroupNames.add('Docgen Template Library Viewer');
+} else if (persona == 'Q2C Processes & Systems' || persona == 'Q2C') {
+    profileName = 'Q2C Processes & Systems Profile'; 
+    permissionSetGroupNames.add('Q2C_Processes_Systems_PSG');
+    permissionSetNames.add('DocuSign_User');
+    publicGroupNames.add('SOPs');
+    publicGroupNames.add('Docgen Template Library Viewer');
+} else if (persona == 'Account Owner' || persona == 'AO') {
+    profileName = 'Account Owner'; 
+    permissionSetGroupNames.add('Account_Owner_PSG');
+}  else {
+    System.debug('Unknown persona: ' + persona);
+    return; // Exit if the persona is not recognized
+}
+
+//Fetch the profileID from the profileName being provided
+try{
+    profileId = [SELECT Id FROM Profile WHERE Name=:profileName LIMIT 1].Id;
+    }catch (Exception e) {
+    System.debug('The following exception has occurred: ' + e.getMessage());
+    System.debug('Profile not found: ' + profileName);
+    return; // Exit if the profile is not recognized);
+} 
+   
+// Fetch the users whose usernames are in the list
+List<User> usersToProcess = [SELECT Id, Name, ProfileId, Profile.Name, UserPermissionsSFContentUser, UserPermissionsInteractionUser FROM User WHERE Username IN :usernames];
+
+
+// Create a map to hold lists of sObjects for different operations
+Map<String, Map<String, List<sObject>>> sObjectMap = new Map<String, Map<String, List<sObject>>>();
+
+// Create lists to hold the records for insertion/updation
+List<User> usersToUpdatePerms = new List<User>();
+List<User> usersToUpdateProfile = new List<User>();
+List<PermissionSetAssignment> psAssignments = new List<PermissionSetAssignment>();
+List<PermissionSetAssignment> psgAssignments = new List<PermissionSetAssignment>();
+List<GroupMember> groupMembers = new List<GroupMember>();
+
+// Lists to hold records for deletion
+List<PermissionSetAssignment> psAssignmentsToDelete = new List<PermissionSetAssignment>();
+List<PermissionSetAssignment> psgAssignmentsToDelete = new List<PermissionSetAssignment>();
+List<GroupMember> groupMembersToDelete = new List<GroupMember>();
+
+// Fetch the permission set and permission set group records by their API names
+Set<Id> permissionSet = getIdsFromList([SELECT Id FROM PermissionSet WHERE Name IN :permissionSetNames]);
+Set<Id> permissionSetGroup = getIdsFromList([SELECT Id FROM PermissionSetGroup WHERE DeveloperName IN :permissionSetGroupNames]);
+Set<Id> publicGroup = getIdsFromList([SELECT Id FROM Group WHERE Name IN :publicGroupNames]);
+
+// Fetch existing permission set assignments for the users
+List<PermissionSetAssignment> existingPsAssignments = [
+    SELECT Id, AssigneeId, PermissionSetId,PermissionSetGroupId, PermissionSet.IsOwnedByProfile 
+    FROM PermissionSetAssignment 
+    WHERE AssigneeId IN :usersToProcess and PermissionSetGroupId =null
+];
+
+// Fetch existing permission set group assignments for the users
+List<PermissionSetAssignment> existingPsgAssignments = [
+    SELECT Id, AssigneeId, PermissionSetGroupId, PermissionSet.IsOwnedByProfile
+    FROM PermissionSetAssignment 
+    WHERE AssigneeId IN :usersToProcess and PermissionSetGroupId !=null
+];
+
+// Fetch existing group members for the users
+List<GroupMember> existingGroupMembers = [
+    SELECT Id, UserOrGroupId, GroupId 
+    FROM GroupMember 
+    WHERE UserOrGroupId IN :usersToProcess
+];
+
+// Process each user
+for (User user : usersToProcess) {
+    // Ensure "Flow User" is enabled for the user
+    if (!user.UserPermissionsInteractionUser || !user.UserPermissionsSFContentUser) {
+        user.UserPermissionsInteractionUser = true;
+        user.UserPermissionsSFContentUser = true;
+        usersToUpdatePerms.add(user); // Add the user to the update for various perms
+        System.debug('Enabled UserPerms for: ' + user.Name);
+    }
+
+    if (user.ProfileId != profileId) {
+        user.ProfileId = profileId;
+        usersToUpdateProfile.add(user);
+        System.debug('Changing Profile for ' + user.Name);
+    }
+
+    // Check and assign permission sets
+    Set<Id> permissionSetUpdates = isPermissionSetAssigned(user.Id, permissionSet, existingPsAssignments);
+
+    if (!permissionSetUpdates.isEmpty()) {
+        for (Id psaID : permissionSetUpdates) {
+            PermissionSetAssignment psa = new PermissionSetAssignment();
+            psa.AssigneeId = user.Id;
+            psa.PermissionSetId = psaID;
+            psAssignments.add(psa);
+        }
+        System.debug('Assigned Permission Set to user: ' + user.Name);
+    } else {
+        System.debug('User already has the permission set: ' + user.Name);
+    }
+
+    // Identify PermissionSetAssignments to delete
+    for (PermissionSetAssignment psa : existingPsAssignments) {
+        if (psa.AssigneeId == user.Id && !permissionSet.contains(psa.PermissionSetId) && !psa.PermissionSet.IsOwnedByProfile) {
+            psAssignmentsToDelete.add(psa);
+        }
+    }
+
+    // Check and assign permission set groups
+    Set<Id> permissionSetGroupUpdates = isPermissionSetGroupAssigned(user.Id, permissionSetGroup, existingPsgAssignments);
+
+    if (!permissionSetGroupUpdates.isEmpty()) {
+        for (Id psgaID : permissionSetGroupUpdates) {
+            PermissionSetAssignment psga = new PermissionSetAssignment();
+            psga.AssigneeId = user.Id;
+            psga.PermissionSetGroupId = psgaID;
+            psgAssignments.add(psga);
+        }
+        System.debug('Assigned Permission Set Group to user: ' + user.Name);
+    } else {
+        System.debug('User already has the permission set group: ' + user.Name);
+    }
+
+    // Identify PermissionSetGroupAssignments to delete
+    for (PermissionSetAssignment psga : existingPsgAssignments) {
+        if (psga.AssigneeId == user.Id && !permissionSetGroup.contains(psga.PermissionSetGroupId) && !psga.PermissionSet.IsOwnedByProfile) {
+            psgAssignmentsToDelete.add(psga);
+        }
+    }
+
+    // Check and assign group memberships
+    Set<Id> groupMemberUpdates = isUserInGroup(user.Id, publicGroup, existingGroupMembers);
+
+    if (!groupMemberUpdates.isEmpty()) {
+        for (Id gmID : groupMemberUpdates) {
+            GroupMember gm = new GroupMember();
+            gm.UserOrGroupId = user.Id;
+            gm.GroupId = gmID;
+            groupMembers.add(gm);
+        }
+        System.debug('Added user to public group: ' + user.Name);
+    } else {
+        System.debug('User is already in the public group: ' + user.Name);
+    }
+
+    // Identify GroupMembers to delete
+    for (GroupMember gm : existingGroupMembers) {
+        if (gm.UserOrGroupId == user.Id && !publicGroup.contains(gm.GroupId)) {
+            groupMembersToDelete.add(gm);
+        }
+    }
+
+}
+
+// add all potential updates to master map
+addToSObjectMap(sObjectMap, 'UPS', 'update', usersToUpdatePerms);
+addToSObjectMap(sObjectMap, 'UP', 'update', usersToUpdateProfile);
+addToSObjectMap(sObjectMap, 'PSA', 'insert', psAssignments);
+addToSObjectMap(sObjectMap, 'PSA', 'delete', psAssignmentsToDelete);
+addToSObjectMap(sObjectMap, 'PSGA', 'insert', psgAssignments);
+addToSObjectMap(sObjectMap, 'PSGA', 'delete', psgAssignmentsToDelete);
+addToSObjectMap(sObjectMap, 'GM', 'insert', groupMembers);
+addToSObjectMap(sObjectMap, 'GM', 'delete', groupMembersToDelete);
+
+// Call the utility method to process all the sObject lists
+processSObjectMap(sObjectMap);
+
+// Helper methods to get IDs from sObject lists
+public static Set<Id> getIdsFromList(List<sObject> records) {
+    Set<Id> ids = new Set<Id>();
+    for (sObject record : records) {
+        if (record != null && record.get('Id') != null) {
+            ids.add((Id) record.get('Id'));
+        }
+    }
+    return ids;
+}
+
+// Helper methods to check if a user has an assignment or group membership
+public static Set<Id> isPermissionSetAssigned(Id userId, Set<Id> permissionSet, List<PermissionSetAssignment> existingAssignments) {
+    Set<Id> found = new Set<Id>(permissionSet);
+    for (PermissionSetAssignment assignment : existingAssignments) {
+        if (assignment.AssigneeId == userId) {
+            found.remove(assignment.PermissionSetId);
+        }
+    }
+    return found;
+}
+
+public static Set<Id> isPermissionSetGroupAssigned(Id userId, Set<Id> permissionSetGroup, List<PermissionSetAssignment> existingAssignments) {
+    Set<Id> found = new Set<Id>(permissionSetGroup);
+    for (PermissionSetAssignment assignment : existingAssignments) {
+        if (assignment.AssigneeId == userId) {
+            found.remove(assignment.PermissionSetGroupId);
+        }
+    }
+    return found;
+}
+
+public static Set<Id> isUserInGroup(Id userId, Set<Id> publicGroup, List<GroupMember> existingGroupMembers) {
+    Set<Id> found = new Set<Id>(publicGroup);
+    for (GroupMember gm : existingGroupMembers) {
+        if (gm.UserOrGroupId == userId) {
+            found.remove(gm.GroupId);
+        }
+    }
+    return found;
+}
+
+// Utility method to process the sObject map for DML operations
+public void processSObjectMap(Map<String, Map<String, List<sObject>>> sObjectMap) {
+    for (String sObjectType : sObjectMap.keySet()) {
+        Map<String, List<sObject>> operationMap = sObjectMap.get(sObjectType);
+        for (String operation : operationMap.keySet()) {
+            List<sObject> records = operationMap.get(operation);
+            
+            // Perform the appropriate DML operation based on the key (insert, update)
+            if (operation == 'insert' && !records.isEmpty()) {
+                insert records;
+                System.debug('Inserted ' + records.size() + ' records for ' + sObjectType);
+            } else if (operation == 'update' && !records.isEmpty()) {
+                update records;
+                System.debug('Updated ' + records.size() + ' records for ' + sObjectType);
+            }else if (operation == 'delete' && !records.isEmpty()) {
+                delete records;
+                System.debug('Deleted ' + records.size() + ' records for ' + sObjectType);
+            }
+        }
+    }
+}
+
+// Helper function to add/merge lists into the map by sObject type and operation
+public void addToSObjectMap(Map<String, Map<String, List<sObject>>> sObjectMap, String sObjectType, String operation, List<sObject> records) {
+    if (!records.isEmpty()) {
+        // Check if the sObject type already exists in the map
+        if (!sObjectMap.containsKey(sObjectType)) {
+            sObjectMap.put(sObjectType, new Map<String, List<sObject>>());
+        }
+        // Get the map of operations (e.g., insert, update) for the sObject type
+        Map<String, List<sObject>> operationMap = sObjectMap.get(sObjectType);
+        
+        // Check if the operation already exists in the map for the specific sObject type
+        if (operationMap.containsKey(operation)) {
+            // Merge the new records with the existing ones
+            List<sObject> existingRecords = operationMap.get(operation);
+            existingRecords.addAll(records);
+            operationMap.put(operation, existingRecords);
+        } else {
+            // Add the new operation with its records
+           // System.debug(records);
+            operationMap.put(operation, records);
+        }
+    }
+}
