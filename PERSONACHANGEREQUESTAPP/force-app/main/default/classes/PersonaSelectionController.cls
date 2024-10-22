@@ -152,7 +152,7 @@ public with sharing class PersonaSelectionController {
     // Method to search for users based on name input
     public void searchUsers() {
         if (selectedUserName != null && selectedUserName != '') {
-            searchResults = [SELECT Id, Name FROM User WHERE IsActive=TRUE AND UserType='Standard' AND Profile.UserLicense.Name='Salesforce' AND Name LIKE :('%' + selectedUserName + '%')  LIMIT 10];
+            searchResults = [SELECT Id, Name FROM User WHERE IsActive=TRUE AND UserType='Standard' AND Profile.UserLicense.Name='Salesforce' AND Name LIKE :('%' + selectedUserName + '%') AND Id !=:UserInfo.getUserId()  LIMIT 10];
         } else {
             searchResults.clear();
         }
