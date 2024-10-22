@@ -134,7 +134,7 @@ public with sharing class PersonaSelectionController {
 
         // Populate individual fields for display
         if (mirrorPersona != null) {
-            mirrorUserName = selectedUserName;
+            //mirrorUserName = selectedUserName;
             mirrorProfileName = mirrorPersona.profileName;
             mirrorRoleName = mirrorPersona.roleName;
             mirrorPermissionSetNames = String.join(mirrorPersona.permissionSetNames, ', ');
@@ -152,9 +152,10 @@ public with sharing class PersonaSelectionController {
     // Method to search for users based on name input
     public void searchUsers() {
         if (selectedUserName != null && selectedUserName != '') {
-            searchResults = [SELECT Id, Name FROM User WHERE IsActive=TRUE AND UserType='Standard' AND Profile.UserLicense.Name='Salesforce' AND Name LIKE :('%' + selectedUserName + '%') AND Id !=:UserInfo.getUserId()  LIMIT 10];
+            searchResults = [SELECT Id, Name, Username FROM User WHERE IsActive=TRUE AND UserType='Standard' AND Profile.UserLicense.Name='Salesforce' AND Name LIKE :('%' + selectedUserName + '%') AND Id !=:UserInfo.getUserId()  LIMIT 10];
         } else {
             searchResults.clear();
+            clearMirrorAs();
         }
 
         selectedPersona ='';
@@ -164,7 +165,9 @@ public with sharing class PersonaSelectionController {
     // Method to select the user from search results
     public void selectUser() {
         selectedUserName ='';
-        selectedUserName = [SELECT Name FROM User WHERE Id =:selectedUserId].Name;  // Get the name of the selected user
+        User selectedUser = [SELECT Name, Username FROM User WHERE Id =:selectedUserId];  // Get the name of the selected user
+        selectedUserName =selectedUser.Name;
+        mirrorUserName=selectedUser.Name + ' (' + selectedUser.Username+')';
         isPersonSelected=true;
         mirrorAs();
     }
