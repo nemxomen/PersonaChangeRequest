@@ -1,0 +1,230 @@
+<apex:page controller="PersonaSelectionController" sidebar="false" showHeader="false">
+    <div class="container">
+        <apex:form id="form">
+            <apex:pageMessages />
+
+            <!-- Persona Selection Dropdown -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Select Persona</h2>
+                </div>
+                <div class="card-body">
+                    <apex:outputLabel value="Select Persona:" for="persona" />
+                    <apex:selectList id="persona" value="{!selectedPersona}" size="1">
+                        <apex:selectOptions value="{!personaOptions}" />
+                        <apex:actionSupport event="onchange" action="{!fetchPersonaDetails}" rerender="personaDetails,userSearchResults,form" />
+                    </apex:selectList>
+                    <!-- Lookup to User Field -->
+                    <apex:outputLabel value="Mirror Access As:" for="userLookup" style="margin-left: 20px;" />
+                    <apex:inputText value="{!selectedUserName}" id="userLookup" />
+                    <apex:commandButton value="Search" action="{!searchUsers}" rerender="userSearchResults,form" />
+
+                    <!-- Search Results -->
+                    <apex:outputPanel id="userSearchResults">
+                        <apex:repeat value="{!searchResults}" var="user">
+                            <div>
+                                <apex:commandLink value="{!user.Name}" action="{!selectUser}" rerender="userDetails,form">
+                                    <apex:param name="userId" value="{!user.Id}" assignTo="{!selectedUserId}" />
+                                </apex:commandLink>
+                            </div>
+                        </apex:repeat>
+                    </apex:outputPanel>
+                </div>
+            </div>
+
+            <!-- Persona Details Section -->
+            <apex:outputPanel id="mirrorAsDetails" layout="block" rendered="{!isPersonSelected}">
+                <div class="card details-card">
+                    <div class="card-header">
+                        <h2>Mirror As Details</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="details-row">
+                            <span class="label">User Name:</span>
+                            <span class="value">{!mirrorUserName}</span>
+                        </div>
+                        <div class="details-row">
+                            <span class="label">Profile Name:</span>
+                            <span class="value">{!mirrorProfileName}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Role Name:</span>
+                            <span class="value">{!mirrorRoleName}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Permission Sets:</span>
+                            <span class="value">{!mirrorPermissionSetNames}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Permission Set Groups:</span>
+                            <span class="value">{!mirrorPermissionSetGroupNames}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Public Groups:</span>
+                            <span class="value">{!mirrorPublicGroupNames}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">User Perms:</span>
+                            <span class="value">{!mirrorUserPerms}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">User Fields:</span>
+                            <span class="value">{!mirrorUserFields}</span>
+                        </div>
+
+                    </div>
+                </div>
+            </apex:outputPanel>
+
+            <!-- Persona Details Section -->
+            <apex:outputPanel id="personaDetails" layout="block" rendered="{!isPersonaSelected}">
+                <div class="card details-card">
+                    <div class="card-header">
+                        <h2>Persona Details</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="details-row">
+                            <span class="label">Profile Name:</span>
+                            <span class="value">{!profileName}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Role Name:</span>
+                            <span class="value">{!roleName}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Permission Sets:</span>
+                            <span class="value">{!permissionSetNames}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Permission Set Groups:</span>
+                            <span class="value">{!permissionSetGroupNames}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">Public Groups:</span>
+                            <span class="value">{!publicGroupNames}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">User Perms:</span>
+                            <span class="value">{!userPerms}</span>
+                        </div>
+
+                        <div class="details-row">
+                            <span class="label">User Fields:</span>
+                            <span class="value">{!userFields}</span>
+                        </div>
+
+                    </div>
+                </div>
+            </apex:outputPanel>
+            
+            <!-- Buttons -->
+            <div class="button-group">
+                <apex:commandButton value="Submit" action="{!submitPersonaRequest}" disabled="{!NOT(isPersonaSelected)||(revertSelected)}" styleClass="btn btn-primary" rerender="form,personaDetails" />
+                <apex:commandButton value="MirrorAs" action="{!mirrorAsRequest}" disabled="{!NOT(isPersonSelected)}" styleClass="btn btn-secondary"  rerender="form,mirrorAsDetails" />
+                <apex:commandButton value="Revert Persona" action="{!revertPersona}" disabled="{!NOT(userHasActiveRevertRecord)}" styleClass="btn btn-secondary"  rerender="form,personaDetails" />
+                <apex:commandButton value="Cancel" action="{!cancel}" styleClass="btn btn-secondary" rerender="form,personaDetails" />
+            </div>
+        </apex:form>
+    </div>
+
+    <style>
+        /* Container for the whole page */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Card styling */
+        .card {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            background-color: #0070d2;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .card-body {
+            padding: 15px;
+        }
+
+        /* Details row styling */
+        .details-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .details-row:last-child {
+            border-bottom: none;
+        }
+
+        /* Label styling */
+        .details-row .label {
+            font-weight: bold;
+            color: #0070d2; /* Blue color for the labels */
+            flex: 1;
+        }
+
+        /* Value styling */
+        .details-row .value {
+            font-weight: bold; /* Bold values */
+            flex: 2;
+        }
+
+        /* Button Group */
+        .button-group {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Button styling */
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .btn-primary {
+            background-color: #0070d2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #005bb5;
+        }
+
+        .btn-secondary {
+            background-color: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background-color: #d0d0d0;
+        }
+    </style>
+</apex:page>
