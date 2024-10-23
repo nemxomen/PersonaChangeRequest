@@ -1,8 +1,9 @@
 public without sharing class PersonaChangeRequestHandler {
     
     public static void handleBeforeInsertUpdate(List<Persona_Change_Request__c> requests) {
+        List<PersonaChangeRequestEvent__e> events = new List<PersonaChangeRequestEvent__e>();
         for (Persona_Change_Request__c request : requests) {
-            if (String.isNotBlank(request.Persona__c)) {
+            if (String.isBlank(request.MirrorAs__c)) {
                 // Call the getPersona method to retrieve the PersonaInfo
                 PersonaInfo personaInfo = PersonaInfo.getPersona(request.Persona__c);
                 personaInfo.validatePersona();
@@ -16,9 +17,18 @@ public without sharing class PersonaChangeRequestHandler {
                     Boolean hasRevert = checkRevertExists(request.Requested_By__c);
                     // Proceed with the update logic if validation is successful
                     try {
-                        List<Id> users = new List<Id>();
-                        users.add(request.Requested_By__c);
-                        updateUserWithPersona(personaInfo.personaName, users, true, false, hasRevert);
+                        // List<Id> users = new List<Id>();
+                        // users.add(request.Requested_By__c);
+                        PersonaChangeRequestEvent__e eventInstance = new PersonaChangeRequestEvent__e(
+                            Persona__c = request.Persona__c,
+                            UserId__c = request.Requested_By__c,     
+                            FromApp__c = true,
+                            IsRevert__c = false,
+                            HasRevert__c = hasRevert,
+                            MirrorAs__c = false
+                        );
+                        events.add(eventInstance);
+                        //updateUserWithPersona(personaInfo.personaName, users, true, false, hasRevert);
                     } catch (Exception e) {
                         // Handle any exceptions and update the change request record with the error
                         request.Status__c = 'Rejected'; 
@@ -30,9 +40,18 @@ public without sharing class PersonaChangeRequestHandler {
                 // Proceed with the update logic if validation is successful
                 // Persona name is blank
                 try {
-                    List<Id> users = new List<Id>();
-                    users.add(request.Requested_By__c);
-                    updateUserWithPersona(request.JSON_MirrorAs_Blob__c, users, true, true, hasRevert);
+                    // List<Id> users = new List<Id>();
+                    // users.add(request.Requested_By__c);
+                        PersonaChangeRequestEvent__e eventInstance = new PersonaChangeRequestEvent__e(
+                            Persona__c = request.JSON_MirrorAs_Blob__c,
+                            UserId__c = request.Requested_By__c,     
+                            FromApp__c = true,
+                            IsRevert__c = true,
+                            HasRevert__c = hasRevert,
+                            MirrorAs__c = true
+                        );
+                        events.add(eventInstance);
+                    //updateUserWithPersona(request.JSON_MirrorAs_Blob__c, users, true, true, hasRevert);
                 } catch (Exception e) {
                     // Handle any exceptions and update the change request record with the error
                     request.Status__c = 'Rejected'; 
@@ -45,11 +64,14 @@ public without sharing class PersonaChangeRequestHandler {
             }
           
         }
+        // Publish platform events
+        if (!events.isEmpty()) {
+            EventBus.publish(events);
+        }
+
     }
 
-
-    @future
-    public static void updateUserWithPersona(String persona, List<Id> users, Boolean fromApp, Boolean isRevert, Boolean hasRevert) {
+    public static void updateUserWithPersona(String persona, List<Id> users, Boolean fromApp, Boolean isRevert, Boolean hasRevert, Boolean mirrorAs) {
 
         try{
             PersonaInfo pi = isRevert ==false ? PersonaInfo.getPersona(persona) : PersonaInfo.fromJson(persona);
@@ -300,7 +322,7 @@ public without sharing class PersonaChangeRequestHandler {
                 processSObjectMap(sObjectMap);
 
                 if(fromApp){
-                    //updatePersonaRequestSuccess(persona, users);
+                    updatePersonaRequestSuccess(users, isRevert, mirrorAs);
                 }
 
             } else {
@@ -308,7 +330,7 @@ public without sharing class PersonaChangeRequestHandler {
                 // You can log or throw an exception here as per your requirements
                 System.debug('Invalid PersonaInfo: ' + pi.errorMessage);
                 if(fromApp){
-                    //updatePersonaRequestRejected(persona, users, 'Invalid PersonaInfo: ' + personaInfo.errorMessage);
+                    updatePersonaRequestRejected (users, 'Invalid PersonaInfo: ' + pi.errorMessage, isRevert, mirrorAs);
                 }
             }
 
@@ -317,11 +339,46 @@ public without sharing class PersonaChangeRequestHandler {
         System.debug('Error updating user: ' + + e.getMessage());
 
         if(fromApp){
-            //updatePersonaRequestRejected(persona, users, 'Error updating user: ' + e.getMessage());
+            updatePersonaRequestRejected (users, 'Error updating user: ' + e.getMessage(), isRevert, mirrorAs);
         }
         
  
     }
+
+
+    }
+
+    @future
+    public static void updatePersonaRequestSuccess(List<Id> users, Boolean isRevert, Boolean mirrorAs){
+        if(isRevert && !mirrorAs){
+            Persona_Change_Request__c revertRecord = [SELECT Id, CreatedDate, IsActive__c, Status__c,Error_Message__c FROM Persona_Change_Request__c WHERE IsActive__c=true AND RecordType.Name = 'Original Persona' AND Requested_By__c =:users Order By CreatedDate Desc LIMIT 1][0];
+            revertRecord.IsActive__c = false;
+            revertRecord.Error_Message__c = '';
+            revertRecord.Status__c = 'Reverted';
+            update revertRecord;
+        }else {
+            Persona_Change_Request__c request = [SELECT Id, CreatedDate, Status__c FROM Persona_Change_Request__c WHERE Requested_By__c =:users AND RecordType.Name = 'Change Request' AND Status__c ='Pending' Order By CreatedDate Desc LIMIT 1][0];
+            request.Status__c = 'Changed';
+            update request;
+        }
+       
+
+    }
+
+    @future
+    public static void updatePersonaRequestRejected(List<Id> users, String errorMessage, Boolean isRevert, Boolean mirrorAs){
+        if(isRevert && !mirrorAs){
+            Persona_Change_Request__c revertRecord = [SELECT Id, CreatedDate, IsActive__c, Status__c,Error_Message__c FROM Persona_Change_Request__c WHERE IsActive__c=true AND RecordType.Name = 'Original Persona' AND Requested_By__c =:users Order By CreatedDate Desc LIMIT 1][0];
+            revertRecord.Error_Message__c = errorMessage;
+            revertRecord.Status__c = 'Rejected';
+            update revertRecord;
+        }else{
+            Persona_Change_Request__c request = [SELECT Id, CreatedDate, Status__c, Error_Message__c FROM Persona_Change_Request__c WHERE Requested_By__c =:users AND RecordType.Name = 'Change Request' AND Status__c ='Pending' Order By CreatedDate Desc LIMIT 1][0];
+            request.Error_Message__c = errorMessage;
+            request.Status__c = 'Rejected';
+            update request;
+        }
+        
 
     }
     
@@ -618,7 +675,9 @@ public without sharing class PersonaChangeRequestHandler {
         // Populate or update fields for the persona request
         personaRequest.IsActive__c = true;
         personaRequest.Status__c = 'Pending Revert'; // Example status; change as per your use case
+        personaRequest.Error_Message__c = '';
         personaRequest.JSON_Revert_Blob__c = userSnapshotJson;
+        personaRequest.Persona__c = 'Original Persona';
         
         // Perform upsert (will insert if new or update if existing)
         try {

@@ -152,7 +152,7 @@ public with sharing class PersonaSelectionController {
     // Method to search for users based on name input
     public void searchUsers() {
         if (selectedUserName != null && selectedUserName != '') {
-            searchResults = [SELECT Id, Name, Username FROM User WHERE IsActive=TRUE AND UserType='Standard' AND Profile.UserLicense.Name='Salesforce' AND Name LIKE :('%' + selectedUserName + '%') AND Id !=:UserInfo.getUserId()  LIMIT 10];
+            searchResults = [SELECT Id, Name, Email FROM User WHERE IsActive=TRUE AND UserType='Standard' AND Profile.UserLicense.Name='Salesforce' AND Name LIKE :('%' + selectedUserName + '%') AND Id !=:UserInfo.getUserId()  LIMIT 10];
         } else {
             searchResults.clear();
             clearMirrorAs();
@@ -419,6 +419,7 @@ public with sharing class PersonaSelectionController {
                 changeRequest.MirrorAs__c = selectedUserId;
                 changeRequest.Status__c = 'Pending';
                 changeRequest.JSON_MirrorAs_Blob__c = jsonMirrorAs;
+                changeRequest.Persona__c = 'MirroAs: ' + selectedUserName;
                 
                 // Insert the record
                 insert changeRequest;
@@ -456,13 +457,22 @@ public with sharing class PersonaSelectionController {
         try {
             // Logic to handle revert action
             // (e.g., update records, revert user state, etc.)
-            revertRecord.IsActive__c = FALSE;
-            revertRecord.Status__c = 'Reverted';
-            update revertRecord;
+            // revertRecord.IsActive__c = FALSE;
+            // revertRecord.Status__c = 'Reverted';
+            // update revertRecord;
 
-            List<Id> users = new List<Id>();
-            users.add(UserInfo.getUserId());
-            PersonaChangeRequestHandler.updateUserWithPersona(revertRecord.JSON_Revert_Blob__c,users,false,true,false);
+            // List<Id> users = new List<Id>();
+            // users.add(UserInfo.getUserId());
+            PersonaChangeRequestEvent__e eventInstance = new PersonaChangeRequestEvent__e(
+                Persona__c = revertRecord.JSON_Revert_Blob__c,
+                UserId__c = UserInfo.getUserId(),     
+                FromApp__c = true,
+                IsRevert__c = true,
+                HasRevert__c = false,
+                MirrorAs__c = false
+            );
+            EventBus.publish(eventInstance);
+            //PersonaChangeRequestHandler.updateUserWithPersona(revertRecord.JSON_Revert_Blob__c,users,false,true,false);
             ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.CONFIRM, 'Persona reverted successfully.'));
             return new PageReference('/' + revertRecord.Id); 
         } catch (Exception e) {

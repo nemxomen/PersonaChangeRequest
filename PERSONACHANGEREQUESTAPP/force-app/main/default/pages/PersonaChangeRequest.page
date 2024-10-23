@@ -23,7 +23,7 @@
                     <apex:outputPanel id="userSearchResults">
                         <apex:repeat value="{!searchResults}" var="user">
                             <div>
-                                <apex:commandLink value="{!user.Name}" action="{!selectUser}" rerender="userDetails,form">
+                                <apex:commandLink value="{!user.Name}" title="{!user.Email}" action="{!selectUser}" rerender="userDetails,form">
                                     <apex:param name="userId" value="{!user.Id}" assignTo="{!selectedUserId}" />
                                 </apex:commandLink>
                             </div>
