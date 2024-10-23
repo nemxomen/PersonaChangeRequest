@@ -1,4 +1,4 @@
-trigger PersonaChangeRequestTrigger on Persona_Change_Request__c (before insert, before update) {
+trigger PersonaChangeRequestTrigger on Persona_Change_Request__c (before insert) {
     if (Trigger.isBefore) {
         // Get the valid RecordTypeIds based on the name (adjust to the correct RecordType name)
         Set<String> validRecordTypeNames = new Set<String>{'Change Request'};  // Add valid record type names here
