@@ -48,7 +48,6 @@ public with sharing class PersonaSelectionController {
     public String userPerms { get; set; }
     public String userFields { get; set; }
 
-        // Additional fields for display in the Visualforce page
     public String mirrorUserName { get; set; }
     public String mirrorProfileName { get; set; }
     public String mirrorRoleName { get; set; }

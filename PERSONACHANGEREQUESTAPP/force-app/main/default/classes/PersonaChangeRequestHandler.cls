@@ -1,4 +1,4 @@
-public without sharing class PersonaChangeRequestHandler {
+public with sharing class PersonaChangeRequestHandler {
     
     public static void handleBeforeInsertUpdate(List<Persona_Change_Request__c> requests) {
         List<PersonaChangeRequestEvent__e> events = new List<PersonaChangeRequestEvent__e>();
@@ -11,7 +11,7 @@ public without sharing class PersonaChangeRequestHandler {
                 if (personaInfo.hasErrors) {
                     // // If there are validation errors, update the change request record with the error message
                     request.Status__c = 'Rejected'; 
-                    request.Error_Message__c = personaInfo.errorMessage.substring(0,255); // Assuming there is a field for error messages
+                    request.Error_Message__c = personaInfo.errorMessage.length()>255 ? (personaInfo.errorMessage).substring(0,255): personaInfo.errorMessage;
                 } else {
 
                     Boolean hasRevert = checkRevertExists(request.Requested_By__c);
@@ -32,7 +32,7 @@ public without sharing class PersonaChangeRequestHandler {
                     } catch (Exception e) {
                         // Handle any exceptions and update the change request record with the error
                         request.Status__c = 'Rejected'; 
-                        request.Error_Message__c = ('Error updating user: ' + e.getMessage()).substring(0,255);
+                        request.Error_Message__c = ('Error updating user: ' + e.getMessage()).length()>255 ? ('Error updating user: ' + e.getMessage()).substring(0,255): ('Error updating user: ' + e.getMessage());
                     }
                 }
             } else if (String.isNotBlank(request.MirrorAs__c)) {
@@ -55,7 +55,7 @@ public without sharing class PersonaChangeRequestHandler {
                 } catch (Exception e) {
                     // Handle any exceptions and update the change request record with the error
                     request.Status__c = 'Rejected'; 
-                    request.Error_Message__c = ('Error updating user: ' + e.getMessage()).substring(0,255);
+                    request.Error_Message__c = ('Error updating user: ' + e.getMessage()).length()>255 ? ('Error updating user: ' + e.getMessage()).substring(0,255): ('Error updating user: ' + e.getMessage());
                 }
             }else {
                 // Persona name is blank
@@ -370,12 +370,12 @@ public without sharing class PersonaChangeRequestHandler {
     public static void updatePersonaRequestRejected(List<Id> users, String errorMessage, Boolean isRevert, Boolean mirrorAs){
         if(isRevert && !mirrorAs){
             Persona_Change_Request__c revertRecord = [SELECT Id, CreatedDate, IsActive__c, Status__c,Error_Message__c FROM Persona_Change_Request__c WHERE IsActive__c=true AND RecordType.Name = 'Original Persona' AND Requested_By__c =:users Order By CreatedDate Desc LIMIT 1][0];
-            revertRecord.Error_Message__c = errorMessage.substring(0,255);
+            revertRecord.Error_Message__c = errorMessage.length()>255 ? (errorMessage).substring(0,255): errorMessage;
             revertRecord.Status__c = 'Rejected';
             update revertRecord;
         }else{
             Persona_Change_Request__c request = [SELECT Id, CreatedDate, Status__c, Error_Message__c FROM Persona_Change_Request__c WHERE Requested_By__c =:users AND RecordType.Name = 'Change Request' AND Status__c ='Pending' Order By CreatedDate Desc LIMIT 1][0];
-            request.Error_Message__c = errorMessage.substring(0,255);
+            request.Error_Message__c = errorMessage.length()>255 ? (errorMessage).substring(0,255): errorMessage;
             request.Status__c = 'Rejected';
             update request;
         }
