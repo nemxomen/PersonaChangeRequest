@@ -331,7 +331,7 @@ public with sharing class PersonaChangeRequestHandler {
                 // You can log or throw an exception here as per your requirements
                 System.debug('Invalid PersonaInfo: ' + pi.errorMessage);
                 if(fromApp){
-                    updatePersonaRequestRejected (users, 'Invalid PersonaInfo: ' + pi.errorMessage, isRevert, mirrorAs);
+                    updatePersonaRequestRejected (users, 'Invalid PersonaInfo: ' + pi.errorMessage, isRevert, mirrorAs, hasRevert);
                 }
             }
 
@@ -340,7 +340,7 @@ public with sharing class PersonaChangeRequestHandler {
         System.debug('Error updating user: ' + + e.getMessage());
         Database.rollback(sp);
         if(fromApp){
-            updatePersonaRequestRejected (users, 'Error updating user: ' + e.getMessage(), isRevert, mirrorAs);
+            updatePersonaRequestRejected (users, 'Error updating user: ' + e.getMessage(), isRevert, mirrorAs, hasRevert);
         }
         
  
@@ -352,13 +352,29 @@ public with sharing class PersonaChangeRequestHandler {
     @future
     public static void updatePersonaRequestSuccess(List<Id> users, Boolean isRevert, Boolean mirrorAs){
         if(isRevert && !mirrorAs){
-            Persona_Change_Request__c revertRecord = [SELECT Id, CreatedDate, IsActive__c, Status__c,Error_Message__c FROM Persona_Change_Request__c WHERE IsActive__c=true AND RecordType.Name = 'Original Persona' AND Requested_By__c =:users Order By CreatedDate Desc LIMIT 1][0];
+            Persona_Change_Request__c revertRecord = [
+                SELECT Id, CreatedDate, IsActive__c, Status__c,Error_Message__c 
+                FROM Persona_Change_Request__c 
+                WHERE IsActive__c=true 
+                AND RecordType.Name = 'Original Persona' 
+                AND Requested_By__c =:users 
+                ORDER BY CreatedDate Desc 
+                LIMIT 1
+                ];
             revertRecord.IsActive__c = false;
             revertRecord.Error_Message__c = '';
             revertRecord.Status__c = 'Reverted';
             update revertRecord;
         }else {
-            Persona_Change_Request__c request = [SELECT Id, CreatedDate, Status__c FROM Persona_Change_Request__c WHERE Requested_By__c =:users AND RecordType.Name = 'Change Request' AND Status__c ='Pending' Order By CreatedDate Desc LIMIT 1][0];
+            Persona_Change_Request__c request = [
+                SELECT Id, CreatedDate, Status__c 
+                FROM Persona_Change_Request__c 
+                WHERE Requested_By__c =:users 
+                AND RecordType.Name = 'Change Request' 
+                AND Status__c ='Pending' 
+                ORDER BY CreatedDate Desc 
+                LIMIT 1
+                ];
             request.Status__c = 'Changed';
             update request;
         }
@@ -367,19 +383,52 @@ public with sharing class PersonaChangeRequestHandler {
     }
 
     @future
-    public static void updatePersonaRequestRejected(List<Id> users, String errorMessage, Boolean isRevert, Boolean mirrorAs){
-        if(isRevert && !mirrorAs){
-            Persona_Change_Request__c revertRecord = [SELECT Id, CreatedDate, IsActive__c, Status__c,Error_Message__c FROM Persona_Change_Request__c WHERE IsActive__c=true AND RecordType.Name = 'Original Persona' AND Requested_By__c =:users Order By CreatedDate Desc LIMIT 1][0];
-            revertRecord.Error_Message__c = errorMessage.length()>255 ? (errorMessage).substring(0,255): errorMessage;
-            revertRecord.Status__c = 'Rejected';
+    public static void updatePersonaRequestRejected(List<Id> users, String errorMessage, Boolean isRevert, Boolean mirrorAs, Boolean hasRevert){
+        
+        //in case of error trying to initially update user records lets stop the revert profile
+        if ((isRevert && !hasRevert && mirrorAs) || (!isRevert && !hasRevert && !mirrorAs)) {
+            Persona_Change_Request__c revertRecord = [
+                SELECT Id, CreatedDate, IsActive__c, Status__c, Error_Message__c 
+                FROM Persona_Change_Request__c 
+                WHERE IsActive__c = true 
+                AND RecordType.Name = 'Original Persona' 
+                AND Requested_By__c = :users 
+                ORDER BY CreatedDate DESC 
+                LIMIT 1
+            ];
+            revertRecord.IsActive__c = false;
             update revertRecord;
-        }else{
-            Persona_Change_Request__c request = [SELECT Id, CreatedDate, Status__c, Error_Message__c FROM Persona_Change_Request__c WHERE Requested_By__c =:users AND RecordType.Name = 'Change Request' AND Status__c ='Pending' Order By CreatedDate Desc LIMIT 1][0];
-            request.Error_Message__c = errorMessage.length()>255 ? (errorMessage).substring(0,255): errorMessage;
-            request.Status__c = 'Rejected';
-            update request;
         }
         
+        Persona_Change_Request__c targetRecord;
+        if (isRevert && !mirrorAs) {
+            targetRecord = [
+                SELECT Id, CreatedDate, IsActive__c, Status__c, Error_Message__c 
+                FROM Persona_Change_Request__c 
+                WHERE IsActive__c = true 
+                AND RecordType.Name = 'Original Persona' 
+                AND Requested_By__c = :users 
+                ORDER BY CreatedDate DESC 
+                LIMIT 1
+            ];
+        } else {
+            targetRecord = [
+                SELECT Id, CreatedDate, Status__c, Error_Message__c 
+                FROM Persona_Change_Request__c 
+                WHERE Requested_By__c = :users 
+                AND RecordType.Name = 'Change Request' 
+                AND Status__c = 'Pending' 
+                ORDER BY CreatedDate DESC 
+                LIMIT 1
+            ];
+        }
+    
+        // Update targetRecord if it was successfully queried
+        if (targetRecord != null) {
+            targetRecord.Error_Message__c = errorMessage.length() > 255 ? errorMessage.substring(0, 255) : errorMessage;
+            targetRecord.Status__c = 'Rejected';
+            update targetRecord;
+        }
 
     }
     
