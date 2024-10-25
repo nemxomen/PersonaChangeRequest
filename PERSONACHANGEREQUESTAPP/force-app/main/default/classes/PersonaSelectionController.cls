@@ -164,9 +164,9 @@ public with sharing class PersonaSelectionController {
     // Method to select the user from search results
     public void selectUser() {
         selectedUserName ='';
-        User selectedUser = [SELECT Name, Username FROM User WHERE Id =:selectedUserId];  // Get the name of the selected user
+        User selectedUser = [SELECT Name, Email FROM User WHERE Id =:selectedUserId];  // Get the name of the selected user
         selectedUserName =selectedUser.Name;
-        mirrorUserName=selectedUser.Name + ' (' + selectedUser.Username+')';
+        mirrorUserName=selectedUser.Name + ' (' + selectedUser.Email+')';
         isPersonSelected=true;
         mirrorAs();
     }
